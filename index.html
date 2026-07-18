@@ -7,27 +7,25 @@
   <style>
     * { box-sizing: border-box; }
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000000; font-family: system-ui, sans-serif; }
-    
-    /* Fullscreen Viewport */
-    spline-viewer { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+
+    /* Fullscreen canvas that the Spline runtime renders into */
+    #canvas3d { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; display: block; }
 
     /* Centered Minimal Audio Control Panel */
     .audio-panel { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 20px; padding: 12px 24px; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 40px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-    
+
     .btn { background: #ffffff; color: #000000; border: none; padding: 10px 20px; font-weight: 600; border-radius: 30px; cursor: pointer; transition: all 0.2s ease; font-size: 14px; }
     .btn:hover { background: #e0e0e0; transform: scale(1.02); }
     .btn:disabled { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.4); cursor: not-allowed; }
-    
+
     .upload-label { background: rgba(255, 255, 255, 0.15); color: #ffffff; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
     .upload-label:hover { background: rgba(255, 255, 255, 0.25); }
     input[type="file"] { display: none; }
-    
+
     #trackName { color: rgba(255,255,255,0.6); font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     #statusMsg { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10; color: rgba(255,80,80,0.9); font-size: 13px; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; display: none; }
   </style>
-  <!-- Correct Spline viewer package path -->
-  <script type="module" src="https://unpkg.com/@splinetool/viewer@latest/build/spline-viewer.js"></script>
 </head>
 <body>
 
@@ -40,37 +38,45 @@
     <button class="btn" id="audioCtrlBtn" disabled>Play</button>
   </div>
 
-  <!-- Your unique Spline scene URL -->
-  <spline-viewer id="fluidCanvas" url="https://prod.spline.design/l9cn3222dWZmYJl8/scene.splinecode"></spline-viewer>
+  <!-- Plain canvas — the Spline *runtime* library (not the <spline-viewer>
+       web component) renders directly into this and gives us real access
+       to setVariable(). -->
+  <canvas id="canvas3d"></canvas>
 
-  <script>
+  <script type="module">
+    import { Application } from 'https://unpkg.com/@splinetool/runtime@1.9.48/build/runtime.js';
+
     const fileInput = document.getElementById('musicUpload');
     const trackLabel = document.getElementById('trackName');
     const playPauseBtn = document.getElementById('audioCtrlBtn');
-    const splineWidget = document.getElementById('fluidCanvas');
     const statusMsg = document.getElementById('statusMsg');
+    const canvas = document.getElementById('canvas3d');
 
     let audioContext, audioAnalyser, audioSource, audioObject, frequenciesData;
     let playingState = false;
-    let splineReady = false;
+    let splineApp = null;
 
     function showStatus(text) {
       statusMsg.textContent = text;
       statusMsg.style.display = 'block';
     }
 
-    // Confirm the Spline scene actually loaded before we try to drive variables
-    splineWidget.addEventListener('load', () => {
-      splineReady = true;
-      console.log('Spline scene loaded successfully');
-    });
-    splineWidget.addEventListener('error', (e) => {
-      console.error('Spline scene failed to load', e);
-      showStatus('Spline scene failed to load — check the scene URL.');
-    });
+    // Load the scene through the runtime API. This returns a real Promise
+    // that resolves once the scene has actually finished loading — no
+    // guessing about event names or timing.
+    splineApp = new Application(canvas);
+    splineApp
+      .load('https://prod.spline.design/l9cn3222dWZmYJl8/scene.splinecode')
+      .then(() => {
+        console.log('Spline scene loaded via runtime. setVariable is:', typeof splineApp.setVariable);
+      })
+      .catch((err) => {
+        console.error('Spline scene failed to load', err);
+        showStatus('Spline scene failed to load — check the scene URL.');
+      });
 
     fileInput.addEventListener('change', (event) => {
-      const selectedFile = event.target.files[0]; // Fixed array extraction bug
+      const selectedFile = event.target.files[0];
       if (!selectedFile) return;
 
       trackLabel.textContent = selectedFile.name;
@@ -89,7 +95,7 @@
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       audioAnalyser = audioContext.createAnalyser();
       audioAnalyser.fftSize = 128; // Keeps processing light, responsive, and performant
-      
+
       audioSource = audioContext.createMediaElementSource(audioObject);
       audioSource.connect(audioAnalyser);
       audioAnalyser.connect(audioContext.destination);
@@ -121,7 +127,7 @@
 
       // Focus heavily on the lowest array indexes (Sub-bass and Kick Drums)
       let bassImpact = 0;
-      const sampleRange = 3; 
+      const sampleRange = 3;
       for (let i = 0; i < sampleRange; i++) {
         bassImpact += frequenciesData[i];
       }
@@ -130,12 +136,10 @@
       // Map raw data seamlessly to a 0.0 -> 1.0 animation blend progress multiplier
       const normalizedVolume = rawAverage / 255;
 
-      // Direct injection into your Spline variable
-      // NOTE: for the <spline-viewer> web component, setVariable lives on the
-      // element itself (not on a nested .spline property — that's the React lib's API)
-      if (splineReady) {
+      // Direct injection into your Spline variable, via the runtime Application instance
+      if (splineApp) {
         try {
-          splineWidget.setVariable('audioIntensity', normalizedVolume);
+          splineApp.setVariable('audioIntensity', normalizedVolume);
         } catch (err) {
           console.error('setVariable failed — check that "audioIntensity" exists in your Spline scene variables panel', err);
         }
