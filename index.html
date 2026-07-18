@@ -5,88 +5,317 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ferrofluid Audio Experience</title>
   <style>
+    :root {
+      --bg: #000000;
+      --panel-bg: rgba(0, 0, 0, 0.85);
+      --panel-border: rgba(255, 255, 255, 0.1);
+      --text-dim: rgba(255, 255, 255, 0.55);
+      --text-bright: #ffffff;
+      --accent: #ffffff;
+      --danger: #ff5c5c;
+    }
+
     * { box-sizing: border-box; }
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000000; font-family: system-ui, sans-serif; }
 
-    /* Fullscreen Viewport */
-    spline-viewer { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
 
-    /* Centered Minimal Audio Control Panel */
-    .audio-panel { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 20px; padding: 12px 24px; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 40px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    /* Fullscreen Spline viewport */
+    spline-viewer {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      transition: opacity 0.6s ease;
+      opacity: 0;
+    }
+    spline-viewer.is-ready { opacity: 1; }
 
-    .btn { background: #ffffff; color: #000000; border: none; padding: 10px 20px; font-weight: 600; border-radius: 30px; cursor: pointer; transition: all 0.2s ease; font-size: 14px; }
-    .btn:hover { background: #e0e0e0; transform: scale(1.02); }
-    .btn:disabled { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.4); cursor: not-allowed; }
+    /* Loading state, shown until the scene fires 'load' */
+    #loadingOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--text-dim);
+      font-size: 14px;
+      letter-spacing: 0.05em;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+    #loadingOverlay.hidden { opacity: 0; }
+    #loadingOverlay .dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.2; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1); }
+    }
 
-    .upload-label { background: rgba(255, 255, 255, 0.15); color: #ffffff; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
+    /* Status / error banner */
+    #statusMsg {
+      position: absolute;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      color: var(--danger);
+      font-size: 13px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 92, 92, 0.3);
+      display: none;
+      max-width: 80vw;
+      text-align: center;
+    }
+
+    /* Centered minimal audio control panel */
+    .audio-panel {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 40px;
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .btn {
+      background: var(--accent);
+      color: #000000;
+      border: none;
+      padding: 10px 20px;
+      font-weight: 600;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+      font-size: 14px;
+      min-width: 68px;
+    }
+    .btn:hover:not(:disabled) { background: #e0e0e0; transform: scale(1.02); }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn:disabled { background: rgba(255, 255, 255, 0.2); color: rgba(255, 255, 255, 0.4); cursor: not-allowed; }
+
+    .upload-label {
+      background: rgba(255, 255, 255, 0.15);
+      color: var(--text-bright);
+      padding: 10px 20px;
+      border-radius: 30px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.2s ease;
+      white-space: nowrap;
+    }
     .upload-label:hover { background: rgba(255, 255, 255, 0.25); }
-    input[type="file"] { display: none; }
+    .upload-label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+    input[type="file"] {
+      position: absolute;
+      width: 1px; height: 1px;
+      opacity: 0;
+      overflow: hidden;
+    }
 
-    #trackName { color: rgba(255,255,255,0.6); font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #trackName {
+      color: var(--text-dim);
+      font-size: 13px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-    #statusMsg { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10; color: rgba(255,80,80,0.9); font-size: 13px; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; display: none; }
+    /* Live level meter — small visual confirmation the analyser is feeding data,
+       independent of whatever the Spline scene itself does */
+    #levelMeter {
+      width: 36px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    #levelMeter > span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.05s linear;
+    }
+
+    @media (max-width: 480px) {
+      .audio-panel { gap: 10px; padding: 10px 14px; bottom: 24px; }
+      #trackName { max-width: 90px; }
+    }
   </style>
-  <!-- Correct Spline viewer package path -->
+
+  <!-- Correct Spline viewer package path (this was pointing at unpkg.com's homepage before) -->
   <script type="module" src="https://unpkg.com/@splinetool/viewer@latest/build/spline-viewer.js"></script>
 </head>
 <body>
 
-  <div id="statusMsg"></div>
+  <div id="loadingOverlay">Loading scene<span class="dot"></span></div>
+  <div id="statusMsg" role="alert"></div>
+
+  <!-- Your unique Spline scene URL -->
+  <spline-viewer id="fluidCanvas" url="https://prod.spline.design/l9cn3222dWZmYJl8/scene.splinecode"></spline-viewer>
 
   <div class="audio-panel">
     <label class="upload-label" for="musicUpload">Upload MP3</label>
     <input type="file" id="musicUpload" accept="audio/*">
     <span id="trackName">Select a beat...</span>
+    <div id="levelMeter" aria-hidden="true"><span id="levelFill"></span></div>
     <button class="btn" id="audioCtrlBtn" disabled>Play</button>
   </div>
 
-  <!-- Your unique Spline scene URL -->
-  <spline-viewer id="fluidCanvas" url="https://prod.spline.design/l9cn3222dWZmYJl8/scene.splinecode"></spline-viewer>
-
   <script>
+    const VARIABLE_NAME = 'audioIntensity'; // must match the variable name in the Spline scene exactly
+
     const fileInput = document.getElementById('musicUpload');
     const trackLabel = document.getElementById('trackName');
     const playPauseBtn = document.getElementById('audioCtrlBtn');
     const splineWidget = document.getElementById('fluidCanvas');
     const statusMsg = document.getElementById('statusMsg');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const levelFill = document.getElementById('levelFill');
 
-    let audioContext, audioAnalyser, audioSource, audioObject, frequenciesData;
+    let audioContext = null;
+    let audioAnalyser = null;
+    let audioSource = null;
+    let audioObject = null;
+    let frequenciesData = null;
     let playingState = false;
+    let splineReady = false;
+    let rafHandle = null;
 
     function showStatus(text) {
       statusMsg.textContent = text;
       statusMsg.style.display = 'block';
     }
 
-    // Confirm the Spline scene actually loaded
+    function clearStatus() {
+      statusMsg.style.display = 'none';
+    }
+
+    // --- Spline scene lifecycle -------------------------------------------------
+
     splineWidget.addEventListener('load', () => {
+      splineReady = true;
+      loadingOverlay.classList.add('hidden');
+      splineWidget.classList.add('is-ready');
       console.log('Spline scene loaded successfully');
     });
+
     splineWidget.addEventListener('error', (e) => {
       console.error('Spline scene failed to load', e);
-      showStatus('Spline scene failed to load — check the scene URL.');
+      loadingOverlay.classList.add('hidden');
+      showStatus('Scene failed to load — check that the Spline scene URL is public and correct.');
     });
+
+    // --- File selection ----------------------------------------------------------
 
     fileInput.addEventListener('change', (event) => {
       const selectedFile = event.target.files[0];
       if (!selectedFile) return;
 
+      clearStatus();
+      stopPlayback();
+
       trackLabel.textContent = selectedFile.name;
-      if (audioObject) { audioObject.pause(); }
+
+      if (audioObject) {
+        URL.revokeObjectURL(audioObject.src);
+      }
 
       audioObject = new Audio(URL.createObjectURL(selectedFile));
+      audioObject.addEventListener('ended', stopPlayback);
+      audioObject.addEventListener('error', () => {
+        showStatus('Could not play that file — try a different audio format (MP3, WAV, OGG).');
+      });
+
       playPauseBtn.disabled = false;
       playPauseBtn.textContent = 'Play';
-      playingState = false;
 
-      if (audioContext) audioContext.close();
-      audioContext = null;
+      // Tear down any existing audio graph; a fresh one is built per-file
+      // in setupAudioPipeline() since createMediaElementSource can only be
+      // called once per <audio> element.
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+        audioAnalyser = null;
+        audioSource = null;
+      }
     });
+
+    // --- Playback controls ---------------------------------------------------
+
+    playPauseBtn.addEventListener('click', async () => {
+      if (!audioObject) return;
+
+      if (!audioContext) {
+        setupAudioPipeline();
+      }
+
+      try {
+        if (playingState) {
+          audioObject.pause();
+          setPlayingUI(false);
+        } else {
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+          await audioObject.play();
+          setPlayingUI(true);
+          streamFrequenciesToSpline();
+        }
+      } catch (err) {
+        console.error('Playback error', err);
+        showStatus('Playback was blocked — click Play again to retry.');
+      }
+    });
+
+    function setPlayingUI(isPlaying) {
+      playingState = isPlaying;
+      playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+    }
+
+    function stopPlayback() {
+      if (audioObject) audioObject.pause();
+      setPlayingUI(false);
+      levelFill.style.width = '0%';
+      if (rafHandle) cancelAnimationFrame(rafHandle);
+    }
 
     function setupAudioPipeline() {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       audioAnalyser = audioContext.createAnalyser();
-      audioAnalyser.fftSize = 128; // Keeps processing light, responsive, and performant
+      audioAnalyser.fftSize = 128; // keeps processing light, responsive, and performant
 
       audioSource = audioContext.createMediaElementSource(audioObject);
       audioSource.connect(audioAnalyser);
@@ -95,42 +324,41 @@
       frequenciesData = new Uint8Array(audioAnalyser.frequencyBinCount);
     }
 
-    playPauseBtn.addEventListener('click', () => {
-      if (!audioContext) setupAudioPipeline();
-
-      if (playingState) {
-        audioObject.pause();
-        playPauseBtn.textContent = 'Play';
-        playingState = false;
-      } else {
-        audioContext.resume();
-        audioObject.play();
-        playPauseBtn.textContent = 'Pause';
-        playingState = true;
-        streamFrequenciesToSpline();
-      }
-    });
+    // --- Audio-reactive loop ---------------------------------------------------
 
     function streamFrequenciesToSpline() {
       if (!playingState) return;
-      requestAnimationFrame(streamFrequenciesToSpline);
+      rafHandle = requestAnimationFrame(streamFrequenciesToSpline);
 
       audioAnalyser.getByteFrequencyData(frequenciesData);
 
-      // Focus heavily on the lowest array indexes (Sub-bass and Kick Drums)
+      // Focus heavily on the lowest array indexes (sub-bass and kick drums)
+      const sampleRange = Math.min(3, frequenciesData.length);
       let bassImpact = 0;
-      const sampleRange = 3;
       for (let i = 0; i < sampleRange; i++) {
         bassImpact += frequenciesData[i];
       }
       const rawAverage = bassImpact / sampleRange;
 
-      // Map raw data seamlessly to a 0.0 -> 1.0 animation blend progress multiplier
+      // Map raw data to a 0.0 -> 1.0 range for the scene's animation blend
       const normalizedVolume = rawAverage / 255;
 
-      // Direct injection into your Spline variable
-      if (splineWidget.spline) {
-        splineWidget.spline.setVariable('audioIntensity', normalizedVolume);
+      // Small on-screen confirmation that the analyser is producing live data,
+      // independent of whether the Spline variable itself is wired up correctly
+      levelFill.style.width = `${Math.round(normalizedVolume * 100)}%`;
+
+      // Drive the Spline scene. Note: for the <spline-viewer> web component,
+      // setVariable lives directly on the element — not on a nested .spline
+      // object (that nested form belongs to the separate React runtime).
+      if (splineReady) {
+        try {
+          splineWidget.setVariable(VARIABLE_NAME, normalizedVolume);
+        } catch (err) {
+          console.error(
+            `setVariable('${VARIABLE_NAME}') failed — confirm a variable with this exact name exists in the Spline scene's Variables panel.`,
+            err
+          );
+        }
       }
     }
   </script>
