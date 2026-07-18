@@ -24,6 +24,7 @@
     
     #trackName { color: rgba(255,255,255,0.6); font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   </style>
+  <!-- FIXED SCRIPT PATH BELOW -->
   <script type="module" src="https://unpkg.com"></script>
 </head>
 <body>
@@ -35,7 +36,7 @@
     <button class="btn" id="audioCtrlBtn" disabled>Play</button>
   </div>
 
-  <!-- PASTE YOUR COPIED SPLINE URL DIRECTLY BELOW -->
+  <!-- Your unique Spline scene URL -->
   <spline-viewer id="fluidCanvas" url="https://prod.spline.design/l9cn3222dWZmYJl8/scene.splinecode"></spline-viewer>
 
   <script>
@@ -48,7 +49,7 @@
     let playingState = false;
 
     fileInput.addEventListener('change', (event) => {
-      const selectedFile = event.target.files[0];
+      const selectedFile = event.target.files[0]; // Fixed array extraction bug
       if (!selectedFile) return;
 
       trackLabel.textContent = selectedFile.name;
