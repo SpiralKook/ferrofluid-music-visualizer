@@ -7,27 +7,31 @@
   <style>
     * { box-sizing: border-box; }
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000000; font-family: system-ui, sans-serif; }
-    
+
     /* Fullscreen Viewport */
     spline-viewer { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
 
     /* Centered Minimal Audio Control Panel */
     .audio-panel { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 20px; padding: 12px 24px; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 40px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-    
+
     .btn { background: #ffffff; color: #000000; border: none; padding: 10px 20px; font-weight: 600; border-radius: 30px; cursor: pointer; transition: all 0.2s ease; font-size: 14px; }
     .btn:hover { background: #e0e0e0; transform: scale(1.02); }
     .btn:disabled { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.4); cursor: not-allowed; }
-    
+
     .upload-label { background: rgba(255, 255, 255, 0.15); color: #ffffff; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
     .upload-label:hover { background: rgba(255, 255, 255, 0.25); }
     input[type="file"] { display: none; }
-    
+
     #trackName { color: rgba(255,255,255,0.6); font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    #statusMsg { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10; color: rgba(255,80,80,0.9); font-size: 13px; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; display: none; }
   </style>
-  <!-- FIXED SCRIPT PATH BELOW -->
-  <script type="module" src="https://unpkg.com"></script>
+  <!-- Correct Spline viewer package path -->
+  <script type="module" src="https://unpkg.com/@splinetool/viewer@latest/build/spline-viewer.js"></script>
 </head>
 <body>
+
+  <div id="statusMsg"></div>
 
   <div class="audio-panel">
     <label class="upload-label" for="musicUpload">Upload MP3</label>
@@ -44,12 +48,27 @@
     const trackLabel = document.getElementById('trackName');
     const playPauseBtn = document.getElementById('audioCtrlBtn');
     const splineWidget = document.getElementById('fluidCanvas');
+    const statusMsg = document.getElementById('statusMsg');
 
     let audioContext, audioAnalyser, audioSource, audioObject, frequenciesData;
     let playingState = false;
 
+    function showStatus(text) {
+      statusMsg.textContent = text;
+      statusMsg.style.display = 'block';
+    }
+
+    // Confirm the Spline scene actually loaded
+    splineWidget.addEventListener('load', () => {
+      console.log('Spline scene loaded successfully');
+    });
+    splineWidget.addEventListener('error', (e) => {
+      console.error('Spline scene failed to load', e);
+      showStatus('Spline scene failed to load — check the scene URL.');
+    });
+
     fileInput.addEventListener('change', (event) => {
-      const selectedFile = event.target.files[0]; // Fixed array extraction bug
+      const selectedFile = event.target.files[0];
       if (!selectedFile) return;
 
       trackLabel.textContent = selectedFile.name;
@@ -68,7 +87,7 @@
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       audioAnalyser = audioContext.createAnalyser();
       audioAnalyser.fftSize = 128; // Keeps processing light, responsive, and performant
-      
+
       audioSource = audioContext.createMediaElementSource(audioObject);
       audioSource.connect(audioAnalyser);
       audioAnalyser.connect(audioContext.destination);
@@ -100,7 +119,7 @@
 
       // Focus heavily on the lowest array indexes (Sub-bass and Kick Drums)
       let bassImpact = 0;
-      const sampleRange = 3; 
+      const sampleRange = 3;
       for (let i = 0; i < sampleRange; i++) {
         bassImpact += frequenciesData[i];
       }
